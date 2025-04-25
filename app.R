@@ -119,6 +119,7 @@ write.csv(CPSI,"CPSI.csv")
 
 colnames(CPSI)
 
+head(CPSI)
 
 
 # Merging datasets on monthyr column ----------------------------------------
@@ -200,87 +201,26 @@ ui <- page_sidebar(fill=TRUE,
                        style = "text-align: center;"
                      ),
                      bg = "#E3EADE",
-                     selectInput(
-                       inputId = "rice_type", 
-                       label = "Select for FOB:", 
-                       choices = unique(merged_data$type), 
-                       selected = "Vietnam 25%"
-                     ),
-                     numericInput(
-                       inputId = "desired_fob", 
-                       label = "Enter Desired FOB Price ($/ton):", 
-                       value = 0,
-                       min = 0, 
-                       step = 1),
-                     
-                     
-                     radioButtons("cost_choice", "Importation Cost ($/ton):",
-                                  choices = list("Total" = "total",
-                                                 "Sub-item costs" = "detailed"),
-                                  selected = "total"),
+                     radioButtons("cpsi_type", "Select CPSI",
+                                  choices = list("Equal Weights" = "equal",
+                                                 "Modelled" = "model",
+                                                 "Adjusted" = "adjusted"),
+                                  selected = "equal"),
                      
                      conditionalPanel(
-                       condition = "input.cost_choice == 'total'",
-                       numericInput("import", "Importation Cost:",
-                                    min = 0, value = 62.42),
-                       # pre = "$", post = "/ton", animate = TRUE)
+                       condition = "input.cpsi_type == 'equal'",
+                       numericInput("weights", "Weights:",
+                                    value = 0.2),
                      ),
                      
                      conditionalPanel(
-                       condition = "input.cost_choice == 'detailed'",
-                       numericInput("freight_cost", "Freight Cost ($/ton):", value = 29.30, min = 0, step = 1),
-                       numericInput("surveyor_fee", "Surveyor's Fee ($/ton):", value = 1.81, min = 0, step = 1),
-                       numericInput("insurance_cost", "Insurance Cost ($/ton):", value = 2.95, min = 0, step = 1),
-                       numericInput("cargo_handling_cost", "Integrated Cargo Handling Cost ($/ton):", 
-                                    value = 28.36, min = 0, step = 1)
+                       condition = "input.cpsi_type == 'adjusted'",
+                       numericInput("pricedev_wt", "Price Deviation Weights:", value = 0.2, min = 0),
+                       numericInput("contri_wt", "Rice Inflation Contribution Weights:", value = 0.2, min = 0),
+                       numericInput("ippgap_wt", "IPP Gap Weigths:", value = 0.2, min = 0),
+                       numericInput("retgap_wt", "Retail Gap Weigths:", value = 0.2, min = 0),
+                       numericInput("sur_wt", "Stocks-to-Use Weights:", value = 0.2, min = 0)
                      ),
-                     
-                     actionButton("add_monthly_tariff", "Set Monthly Tariff Rates"),
-                     selectInput("tariff_year", "Select Year:", choices = 2016:2024), # Adjust as needed
-                     uiOutput("monthly_tariff_ui"),
-                     
-                     sliderInput("tariff", "Tariff Rate (%):",
-                                 min = 0, max = 100, value = 35, step = 5,
-                                 post = "%", animate = TRUE),
-                     numericInput(
-                       inputId = "desired_exrate", 
-                       label = "Enter Desired Exchange Rate (₱/$):", 
-                       value = 0,
-                       min = 0, 
-                       step = 1
-                     ),
-                     numericInput("transpo", "Local Transportation Cost (₱/ton):",
-                                  min = 0, value = 1443),
-                     
-                     # Marketing costs inputs
-                     radioButtons("marketing_cost_choice", "Marketing Cost (₱/kg):",
-                                  choices = list("Total" = "total",
-                                                 "Sub-item costs" = "detailed"),
-                                  selected = "total"),
-                     
-                     conditionalPanel(
-                       condition = "input.marketing_cost_choice == 'total'",
-                       numericInput("total_marketing_cost", "Total Marketing Cost:", value = 9.5)
-                     ),
-                     
-                     conditionalPanel(
-                       condition = "input.marketing_cost_choice == 'detailed'",
-                       numericInput("drying_cost", "Drying Cost:", value = 0.30),
-                       numericInput("milling_processing_cost", "Milling/Processing Cost:", value = 1.60),
-                       numericInput("transportation_cost", "Transportation Cost:", value = 2.30),
-                       numericInput("packaging_cost", "Packaging Cost:", value = 0.45),
-                       numericInput("other_costs", "Other Costs:", value = 0.45),
-                       numericInput("market_players_profit", "Market Players Profit:", value = 5.00)
-                     ),
-                     
-                     selectInput("mill_type", "Select for Wholesale/Retail Price:", 
-                                 choices = c("Well milled" = "wmr", "Regular milled" = "rmr"), selected = "wmr"),
-                     
-                     # Milling recovery slider
-                     sliderInput("milling_recovery", "Milling Recovery (%):", 
-                                 min = 0, max = 100, value = 65, step = .5,
-                                 post = "%", animate = TRUE)
-                   ),
                    
                    page_fillable(
                      div(
@@ -345,7 +285,7 @@ ui <- page_sidebar(fill=TRUE,
                          nav_panel(
                            title = "Trend",
                            card(
-                             plotlyOutput("pricePlot"),
+                             plotlyOutput("cpsiPlot"),
                              br(), # Adds space between the plot and the text box
                              card(
                                strong("Key Results:"),
@@ -356,8 +296,9 @@ ui <- page_sidebar(fill=TRUE,
                            )
                          )
                        )
-                     )
-                   )
+)
+)
+)
 )
 
 # Server  -----------------------------------------------------------------
@@ -393,29 +334,36 @@ server <- function(input, output, session) {
                                           total_marketing_cost)
     
     output$valuetext1 <-  renderUI(
-      strong(fob_value)
+      strong(first_row$cpsi_equal)
     )
     
     output$valuetext2 <-  renderUI(
-      strong(round(results$ipp, 2))
+      strong(round(results$cpsi_model, 2))
     )
     
     output$valuetext3 <-  renderUI(
-      strong(first_row$wholesale_price)
+      strong(first_row$cpsi_adj)
     )
     
     output$valuetext4 <-  renderUI(
-      strong(first_row$retail_price)
+      strong(first_row$PriceDev)
     )
     
     output$valuetext5 <-  renderUI(
-      strong(round(results$farmgate_price, 2))
+      strong(round(results$Contri, 2))
     )
     
     output$valuetext6 <-  renderUI(
-      strong(first_row$farmgate)
+      strong(first_row$IPPGap)
     )
     
+    output$valuetext7 <-  renderUI(
+      strong(first_row$RetGap)
+    )
+    
+    output$valuetext8 <-  renderUI(
+      strong(first_row$SURindex)
+    )
   })
   
   # UI for monthly tariff rates
@@ -590,34 +538,101 @@ server <- function(input, output, session) {
                              pageLength = 20))
   })
   
-  output$pricePlot <- renderPlotly({
-    plot_data <- final_tab() %>%
-      mutate_if(is.character, as.numeric)
-    
-    plot_ly(plot_data, x = ~monthyr) %>%
-      add_lines(y = ~ipp, name = "IPP", line = list(color = 'blue')) %>%
-      add_lines(y = ~wholesale_price, name = "Wholesale", line = list(color = 'red', dash = "dash")) %>%
-      add_lines(y = ~retail_price, name = "Retail", line = list(color = 'orange')) %>%
-      # add_lines(y = ~cif_at_zero, name = "CIF at 0% tariff", line = list(color = 'black')) %>%
-      add_lines(y = ~farmgate, name = "Actual Farmgate at 14% MC", line = list(color = 'black')) %>%
-      add_lines(y = ~farmgate_price, name = "Equivalent Farmgate at 14% MC", line = list(color = 'darkgreen', dash = "dash")) %>%
-      # add_lines(y = ~farmgate_price_22, name = "Computed Farmgate at 22% MC", line = list(color = 'darkgreen')) %>%
-      # add_lines(y = ~farmgate_price_26, name = "Farmgate at 26% MC", line = list(color = 'darkgreen', dash = "dot")) %>%
-      layout(title = "Price Comparison",
-             hovermode = "x unified",
-             xaxis = list(
-               title = "Month/Year",
-               rangeselector = list(
-                 buttons = list(
-                   list(count = 3, label = "3 mo", step = "month", stepmode = "backward"),
-                   list(count = 6, label = "6 mo", step = "month", stepmode = "backward"),
-                   list(count = 1, label = "1 yr", step = "year", stepmode = "backward"),
-                   list(count = 1, label = "YTD", step = "year", stepmode = "todate"),
-                   list(step = "all")
-                 )),
-               rangeslider = list(type = "date")),
-             yaxis = list(title = "Price (₱/kg)"),
-             plot_bgcolor = 'rgb(229,229,229)')
+  output$cpsiPlot <- renderPlotly({
+    CPSI |> 
+      plot_ly() |> 
+      add_trace(x = ~date,
+                y = ~RetReal,
+                type = 'scatter',
+                mode = 'lines',
+                yaxis = "y1",
+                name = 'retail price (real)') |> 
+      add_trace(x = ~date,
+                y = ~WsaleReal,
+                type = 'scatter',
+                mode = 'lines',
+                yaxis = "y1",
+                name = 'Wholesale price (real)') |> 
+      add_trace(x = ~date,
+                y = ~RetNom,
+                type = 'scatter',
+                mode = 'lines',
+                yaxis = "y1",
+                name = 'retail price (Nominal)') |> 
+      add_trace(x = ~date,
+                y = ~WsaleNom,
+                type = 'scatter',
+                mode = 'lines',
+                yaxis = "y1",
+                name = 'Wholesale price (Nominal)') |> 
+      add_trace(x = ~date,
+                y = ~IppReal,
+                type = 'scatter',
+                mode = 'lines',
+                yaxis = "y1",
+                name = 'Import Parity price') |>
+      add_trace(x = ~date,
+                y = ~CPSI,
+                yaxis = "y3",
+                type = 'scatter',
+                mode = 'lines',
+                name = "CPSI") |>
+      add_trace(x = ~date,
+                y = ~PriceDev,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="Price deviation") |>
+      add_trace(x = ~date,
+                y = ~Contri,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="Rice Inflation Contri") |>
+      add_trace(x = ~date,
+                y = ~IPPGap,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="IPP and Wsale Gap") |>
+      add_trace(x = ~date,
+                y = ~`RetGap`,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="Wsale and Ret Gap") |>
+      add_trace(x = ~date,
+                y = ~SURindex,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="Change in Stocks to Use") |> 
+      add_trace(x = ~date,
+                y = ~TriggerPercent,
+                yaxis = "y2",
+                type = 'scatter',
+                mode = 'lines',
+                name ="TriggPerc") |> 
+      
+      layout(yaxis2 = list(overlaying ="y",
+                           side = 'right'
+      ),
+      yaxis3 = list(overlaying ="y",
+                    side = 'right'
+      ),
+      hovermode = "x unified",
+      xaxis = list(title = "Date",
+                   rangeselector =  list(
+                     buttons = list(
+                       list(count = 3, label = "3 mo", step = "month", stepmode ="backward"),
+                       list(count = 6, label = "6 mo", step = "month", stepmode ="backward"),
+                       list(count = 1, label = "1 yr", step = "year", stepmode ="backward"),
+                       list(count = 1, label = "YTD", step = "year", stepmode ="todate"),
+                       list(step = "all")
+                     )),
+                   rangeslider = list(type ="date")
+      )
+      )
   })
   
   observe({
